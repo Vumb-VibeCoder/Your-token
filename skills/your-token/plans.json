@@ -1,0 +1,202 @@
+{
+  "_note": "Every number here is a starting point. Anthropic doesn't publish exact claude.ai token limits, so calibrate. (1) free_budget_tokens=30000 is an unverified third-party estimate (roughly 25k-40k) for one 5-hour Free window. Other plans use free_budget_tokens x multiplier. (2) multiplier: Pro is 'at least 5x Free', Max 5x = 25x Free, Max 20x = 100x Free. Anthropic states the multiples, not the Free baseline. (3) price_in/price_out are API list prices (USD per million tokens) as of prices_as_of. They give the output/input ratio and the API dollars. usage_weight (burn rate relative to Sonnet 5.5) is a guess, not a price. (4) Max plans also have weekly limits that this skill doesn't track. Prices go stale: check prices_url and update with `calibrate --price NAME=IN/OUT`.",
+  "prices_as_of": "2026-10-01",
+  "prices_url": "https://docs.claude.com/en/docs/about-claude/pricing",
+  "free_budget_tokens": 30000,
+  "cache_ttl_sec": 300,
+  "api_pricing": {
+    "cache_read": 0.1,
+    "cache_write_5m": 1.25,
+    "cache_write_1h": 2.0,
+    "batch": 0.5
+  },
+  "plans": {
+    "claude_free": {
+      "label": "Free",
+      "multiplier": 1,
+      "window_hours": 5,
+      "warn_at": 0.7,
+      "handoff_at": 0.85,
+      "cache_discount": 0.0,
+      "default_model": "sonnet-5.5",
+      "models": [
+        "haiku-5.5",
+        "sonnet-5.5"
+      ]
+    },
+    "claude_pro": {
+      "label": "Pro",
+      "multiplier": 5,
+      "window_hours": 5,
+      "warn_at": 0.7,
+      "handoff_at": 0.85,
+      "cache_discount": 0.5,
+      "default_model": "sonnet-5.5",
+      "models": [
+        "haiku-5.5",
+        "sonnet-5.5",
+        "opus-5.5"
+      ]
+    },
+    "claude_max5": {
+      "label": "Max 5x",
+      "multiplier": 25,
+      "window_hours": 5,
+      "warn_at": 0.7,
+      "handoff_at": 0.85,
+      "cache_discount": 0.5,
+      "default_model": "opus-5.5",
+      "models": [
+        "haiku-5.5",
+        "sonnet-5.5",
+        "opus-5.5",
+        "fable-5.1"
+      ]
+    },
+    "claude_max20": {
+      "label": "Max 20x",
+      "multiplier": 100,
+      "window_hours": 5,
+      "warn_at": 0.7,
+      "handoff_at": 0.85,
+      "cache_discount": 0.5,
+      "default_model": "opus-5.5",
+      "models": [
+        "haiku-5.5",
+        "sonnet-5.5",
+        "opus-5.5",
+        "fable-5.1"
+      ]
+    },
+    "api": {
+      "label": "API",
+      "multiplier": 1,
+      "window_hours": 5,
+      "warn_at": 0.7,
+      "handoff_at": 0.85,
+      "cache_discount": 0.0,
+      "default_model": "sonnet-5.5",
+      "models": []
+    },
+    "custom": {
+      "label": "Other",
+      "multiplier": 1,
+      "window_hours": 5,
+      "warn_at": 0.7,
+      "handoff_at": 0.85,
+      "cache_discount": 0.0,
+      "default_model": "sonnet-5.5",
+      "models": []
+    }
+  },
+  "models": {
+    "haiku-5.5": {
+      "price_in": 0.1,
+      "price_out": 0.5,
+      "usage_weight": 0.25
+    },
+    "sonnet-5.5": {
+      "price_in": 2.0,
+      "price_out": 10.0,
+      "usage_weight": 1.0
+    },
+    "opus-5.5": {
+      "price_in": 4.0,
+      "price_out": 20.0,
+      "usage_weight": 2.0
+    },
+    "fable-5.1": {
+      "price_in": 10.0,
+      "price_out": 50.0,
+      "usage_weight": 5.0
+    },
+    "mythos-5.1": {
+      "price_in": 10.0,
+      "price_out": 50.0,
+      "usage_weight": 5.0,
+      "price_note": "unpublished; assumed equal to Fable 5.1"
+    },
+    "opus-5": {
+      "price_in": 5.0,
+      "price_out": 25.0,
+      "usage_weight": 2.5
+    },
+    "sonnet-5": {
+      "price_in": 2.0,
+      "price_out": 10.0,
+      "usage_weight": 1.0
+    },
+    "fable-5": {
+      "price_in": 10.0,
+      "price_out": 50.0,
+      "usage_weight": 5.0
+    },
+    "haiku": {
+      "price_in": 0.1,
+      "price_out": 0.5,
+      "usage_weight": 0.25
+    },
+    "sonnet": {
+      "price_in": 2.0,
+      "price_out": 10.0,
+      "usage_weight": 1.0
+    },
+    "opus": {
+      "price_in": 4.0,
+      "price_out": 20.0,
+      "usage_weight": 2.0
+    },
+    "fable": {
+      "price_in": 10.0,
+      "price_out": 50.0,
+      "usage_weight": 5.0
+    },
+    "mythos": {
+      "price_in": 10.0,
+      "price_out": 50.0,
+      "usage_weight": 5.0
+    }
+  },
+  "context_window": {
+    "limit": 200000,
+    "warn_at": 0.7,
+    "handoff_at": 0.85,
+    "marginal_warn": 0.1
+  },
+  "chars_per_token": {
+    "vi": 2.8,
+    "en": 4.0,
+    "code": 3.3,
+    "mixed": 3.5
+  },
+  "effort_scale": {
+    "4": "low",
+    "5": "medium",
+    "10": "high",
+    "30": "extra",
+    "max": "max"
+  },
+  "effort_profiles": {
+    "low": {
+      "thinking_ratio": 0.5,
+      "expected_tool_calls": 1
+    },
+    "medium": {
+      "thinking_ratio": 1.5,
+      "expected_tool_calls": 3
+    },
+    "high": {
+      "thinking_ratio": 3.0,
+      "expected_tool_calls": 6
+    },
+    "extra": {
+      "thinking_ratio": 5.0,
+      "expected_tool_calls": 10
+    },
+    "max": {
+      "thinking_ratio": 8.0,
+      "expected_tool_calls": 15
+    }
+  },
+  "tool_call_tokens": 80
+}
