@@ -4,7 +4,6 @@
 ![Python 3](https://img.shields.io/badge/python-3-blue?style=flat-square)
 ![Agent Skills](https://img.shields.io/badge/Agent%20Skills-compatible-8A2BE2?style=flat-square)
 ![Claude](https://img.shields.io/badge/for-Claude-D97757?style=flat-square)
-[![tests](https://github.com/Vumb-VibeCoder/Your-token/actions/workflows/test.yml/badge.svg)](https://github.com/Vumb-VibeCoder/Your-token/actions/workflows/test.yml)
 
 Claude can't see how close you are to your usage limit. You find out when the chat stops, usually halfway through a file.
 
