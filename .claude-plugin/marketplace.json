@@ -1,0 +1,15 @@
+{
+  "name": "your-token",
+  "owner": {
+    "name": "Asa"
+  },
+  "plugins": [
+    {
+      "name": "your-token",
+      "source": "./",
+      "description": "Tracks token usage and context so Claude can warn before a limit hits and hand the work off cleanly.",
+      "version": "1.0.0",
+      "skills": ["./skills/your-token"]
+    }
+  ]
+}
