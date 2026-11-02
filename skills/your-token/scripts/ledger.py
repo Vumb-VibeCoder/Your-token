@@ -13,7 +13,7 @@ Global flag: --ledger FILE, placed before the command.
 Commands: init plan add turn api-usage status predict window calibrate export restore reset
 Output is English on purpose. Claude relays it in the user's language.
 """
-import argparse, json, math, os, re, sys, time
+import argparse, calendar, json, math, os, re, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -91,7 +91,7 @@ def new_state(plan_key=DEFAULT_PLAN, model=None, budget=None, budget_usd=None, p
          "context_tokens": 0, "window_start": None, "windows_done": 0, "last_turn_time": None,
          "totals": blank_totals(), "pending": blank_pending(), "turns": [], "calibration": [],
          "spend_usd": 0.0, "budget_usd": budget_usd, "period": period, "period_start": None,
-         "limits": {}, "events": [], "calls": 0}
+         "limits": {}, "events": [], "calls": 0, "ingest": {}, "cache_ttl_source": "default"}
     apply_plan(s, plan_key, p)
     if budget:
         s["free_base"] = budget / s["multiplier"]
@@ -324,11 +324,11 @@ def price_age_days(s):
 
 
 # ---------- reporting ----------
-def print_tips():
+def print_tips(s):
     print("SAVING TIPS:")
     print(" - Put several questions in one message. Every message re-reads the whole context.")
     print(" - For simple jobs, use a smaller model (Haiku) or turn extended thinking off.")
-    print(" - Don't pause more than 5 min in the middle of heavy work. The cache expires and the next turn is billed in full.")
+    print(f" - Don't pause more than {s['cache_ttl_sec'] / 60:.0f} min in the middle of heavy work. The cache expires and the next turn is billed in full.")
     print(" - For big files, read only the part you need (skim), or put them in a Project instead of pasting them again.")
 
 
@@ -383,7 +383,7 @@ def print_status(s):
     if "WARN" in (u_lv, c_lv) and "HANDOFF" not in (u_lv, c_lv):
         print("=> Heads-up: do the most important work first, and skip deep reads and high effort where you can.")
     if {"WARN", "HANDOFF"} & {u_lv, c_lv} or (mi and mi["advise"]):
-        print_tips()
+        print_tips(s)
 
 
 def brief(s):
@@ -557,8 +557,109 @@ def cmd_api_usage(a):
                        "weighted": 0, "usd": round(cost, 6)})
     s["turns"] = s["turns"][-MAX_TURNS_KEPT:]
     s["last_turn_time"] = now()
+    observe_ttl(s, a.cache_write, a.cache_write_1h)
     save(s)
     print(f"call {s['calls']} [{s['model']}] +${cost:.6f}")
+    report(s, reset, a.verbose)
+
+
+# ---------- exact usage from a Claude Code transcript ----------
+def observe_ttl(s, w5, w1):
+    """Cache TTL isn't fixed: the server picks 5m or 1h per request, and it has changed over time.
+    So read it from what was actually billed: whichever write tier dominates wins."""
+    if w5 or w1:
+        s["cache_ttl_sec"] = 3600 if w1 > w5 else 300
+        s["cache_ttl_source"] = "observed"
+
+
+def parse_ts(v):
+    try:
+        return calendar.timegm(time.strptime(str(v)[:19], "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return None
+
+
+def cmd_ingest(a):
+    path = Path(a.transcript).expanduser()
+    if not path.is_file():
+        sys.exit(f"Transcript not found: {path}")
+    s = load()
+    fresh = s.get("window_start") is None
+    reset = tick(s)
+    key = str(path.resolve())
+    start = 0 if a.all else s["ingest"].get(key, 0)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if start > len(lines):                       # file was rewritten or truncated
+        start = 0
+    calls = {}
+    for ln in lines[start:]:
+        try:
+            o = json.loads(ln)
+        except ValueError:
+            continue
+        m = o.get("message") if isinstance(o, dict) else None
+        u = m.get("usage") if isinstance(m, dict) and o.get("type") == "assistant" else None
+        if not isinstance(u, dict):
+            continue
+        k = m.get("id") or o.get("uuid") or id(o)
+        if k not in calls or (u.get("output_tokens") or 0) >= (calls[k][1].get("output_tokens") or 0):
+            calls[k] = (o, u, m)                 # one API call can span several lines: count it once
+    api = s["mode"] == "api"
+    ws = s.get("window_start")
+    if fresh and not api:                        # unknown window: take calls from the last window_hours
+        ws = now() - s["window_hours"] * 3600
+    first_t = None
+    n = w5 = w1 = 0
+    for o, u, m in calls.values():
+        t = parse_ts(o.get("timestamp"))
+        if not api and ws is not None and t is not None and t < ws:
+            continue                             # belongs to an earlier 5h window
+        cc = u.get("cache_creation") or {}
+        c5 = cc.get("ephemeral_5m_input_tokens")
+        c1 = cc.get("ephemeral_1h_input_tokens")
+        total_w = u.get("cache_creation_input_tokens") or 0
+        if c5 is None and c1 is None:
+            c5, c1 = total_w, 0                  # no split reported: assume the 5m tier
+        c5, c1 = c5 or 0, c1 or 0
+        i, r, out = u.get("input_tokens") or 0, u.get("cache_read_input_tokens") or 0, u.get("output_tokens") or 0
+        w5, w1 = w5 + c5, w1 + c1
+        try:
+            s["model"] = resolve_model(s, m.get("model") or s["model"])
+        except SystemExit:
+            pass                                 # unknown model name: keep the current one
+        if t is not None and (first_t is None or t < first_t):
+            first_t = t
+        if api:
+            cost = api_cost(s, argparse.Namespace(input=i, cache_read=r, cache_write=c5, cache_write_1h=c1,
+                                                  output=out, batch=False))
+            s["spend_usd"] += cost
+            billed = i + c5 + c1
+            weighted = 0
+        else:
+            billed = i + c5 + c1 + r * (1 - s["cache_discount"])
+            weighted = turn_cost(s, billed, out)
+            cost = None
+            s["totals"]["weighted"] += weighted
+        s["totals"]["input_billed"] += billed
+        s["totals"]["output"] += out
+        s["context_tokens"] = i + r + c5 + c1 + out
+        s["calls"] += 1
+        s["turns"].append({"n": s["calls"], "model": s["model"], "tool_calls": 0, "input_billed": int(billed),
+                           "output": out, "user": 0, "tool_result": 0, "cache_expired": False,
+                           "weighted": int(weighted), "exact": True,
+                           **({"usd": round(cost, 6)} if cost is not None else {})})
+        if t is not None:
+            s["last_turn_time"] = t
+        n += 1
+    s["turns"] = s["turns"][-MAX_TURNS_KEPT:]
+    s["ingest"][key] = len(lines)
+    if fresh and not api and first_t is not None:
+        s["window_start"] = first_t              # window began at the first call we counted
+    observe_ttl(s, w5, w1)
+    if n and s["last_turn_time"] is None:
+        s["last_turn_time"] = now()
+    save(s)
+    print(f"ingested {n} calls (exact usage). cache TTL: {s['cache_ttl_sec'] // 60} min ({s['cache_ttl_source']})")
     report(s, reset, a.verbose)
 
 
@@ -634,6 +735,10 @@ def cmd_calibrate(a):
     if a.context_limit:
         s["context_limit"] = a.context_limit
         print(f"context_limit set to {a.context_limit}")
+    if a.cache_ttl_min is not None:
+        s["cache_ttl_sec"] = int(a.cache_ttl_min * 60)
+        s["cache_ttl_source"] = "manual"
+        print(f"cache TTL set to {a.cache_ttl_min:g} min")
     if a.cache_discount is not None:
         s["cache_discount"] = a.cache_discount
         print(f"cache_discount set to {a.cache_discount}")
@@ -782,6 +887,12 @@ def main():
     p.add_argument("--model"); p.add_argument("--verbose", action="store_true")
     p.set_defaults(f=cmd_api_usage)
 
+    p = sub.add_parser("ingest", help="log exact usage from a Claude Code transcript (.jsonl), no estimating")
+    p.add_argument("--transcript", required=True, help="~/.claude/projects/<project>/<session>.jsonl")
+    p.add_argument("--all", action="store_true", help="re-read from the start (default: only new lines)")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(f=cmd_ingest)
+
     sub.add_parser("status").set_defaults(f=cmd_status)
 
     p = sub.add_parser("window")
@@ -792,6 +903,7 @@ def main():
     p = sub.add_parser("calibrate"); p.add_argument("--budget", type=int)
     p.add_argument("--budget-usd", type=float)
     p.add_argument("--context-limit", type=int); p.add_argument("--cache-discount", type=float)
+    p.add_argument("--cache-ttl-min", type=float, help="cache lifetime in minutes (5 or 60), if you know it")
     p.add_argument("--model-weight", nargs="+", metavar="NAME=VALUE")
     p.add_argument("--price", nargs="+", metavar="NAME=IN/OUT", help="USD per MTok, e.g. opus-5.5=4/20")
     p.add_argument("--rpm", type=int); p.add_argument("--itpm", type=int); p.add_argument("--otpm", type=int)

@@ -127,5 +127,39 @@ class Packaging(unittest.TestCase):
             self.assertIn(f"your-token/{needed}", names)
 
 
+class Ingest(LedgerCase):
+    def transcript(self, rows):
+        import json
+        f = Path(self.tmp.name) / "s.jsonl"
+        f.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        return str(f)
+
+    @staticmethod
+    def row(mid, out, w5=0, w1=0, read=0, ts=None):
+        import time
+        ts = ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60))
+        return {"type": "assistant", "timestamp": ts, "message": {"id": mid, "model": "claude-sonnet-5-5", "usage": {
+            "input_tokens": 10, "output_tokens": out, "cache_read_input_tokens": read,
+            "cache_creation_input_tokens": w5 + w1,
+            "cache_creation": {"ephemeral_5m_input_tokens": w5, "ephemeral_1h_input_tokens": w1}}}}
+
+    def test_exact_counts_dedupe_and_one_hour_ttl(self):
+        f = self.transcript([self.row("a", 5, w1=1000), self.row("a", 50, w1=1000), self.row("b", 20, read=1000)])
+        out = self.run_ledger("ingest", "--transcript", f)
+        self.assertIn("ingested 2 calls", out)
+        self.assertIn("60 min (observed)", out)
+
+    def test_five_minute_tier_detected_and_only_new_lines(self):
+        f = self.transcript([self.row("a", 5, w5=1000)])
+        self.assertIn("5 min (observed)", self.run_ledger("ingest", "--transcript", f))
+        self.assertIn("ingested 0 calls", self.run_ledger("ingest", "--transcript", f))
+
+    def test_manual_ttl(self):
+        self.assertIn("60 min", self.run_ledger("calibrate", "--cache-ttl-min", "60"))
+
+    def test_missing_transcript(self):
+        self.run_ledger("ingest", "--transcript", "/nonexistent.jsonl", ok=False)
+
+
 if __name__ == "__main__":
     unittest.main()

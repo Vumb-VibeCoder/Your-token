@@ -46,7 +46,7 @@ Reading is input and generating is output. Input is the system prompt, the user,
 - claude.ai: `(input + output x out_ratio) x usage_weight`. `out_ratio` is the output/input price ratio (5 for every current model). `usage_weight` (relative to Sonnet 5.5) is a guess. Adjust it with `calibrate --model-weight opus-5.5=1.8`.
 - API USD: `(input x price_in + output x price_out) / 1e6`. For exact usage, cache reads cost 0.1x, 5-minute cache writes 1.25x, 1-hour writes 2x, and Batch 0.5x (`plans.json` > `api_pricing`). Thinking is billed as output and is already inside `usage.output_tokens`.
 - Prices go stale. `plans.json` has `prices_as_of`, and status warns after 90 days. After checking the pricing page, update with `calibrate --price opus-5.5=4/20` (USD per MTok).
-- Cache: the discount is `cache_discount` (Free: 0). It's dropped for a turn when the pause since the previous turn is over 5 minutes, measured automatically or set with `--gap-min`.
+- Cache: the discount is `cache_discount` (Free: 0). It's dropped for a turn when the pause since the previous turn exceeds the cache TTL (`cache_ttl_sec`, default 5 min), measured automatically or set with `--gap-min`. The server chooses 5m or 1h per request and has changed this over time, so the TTL is not assumed: `ingest` and `api-usage` set it from the write tier actually billed (`ephemeral_1h` vs `ephemeral_5m`), or set it by hand with `calibrate --cache-ttl-min 60`.
 - Reading depth: `skim` counts only what entered the context. `deep` counts the whole file times the number of re-reads. Thinking grows with effort (`thinking_ratio`).
 - The Free default of 30000 per window is an unverified third-party estimate. Calibration replaces it.
 
@@ -72,6 +72,7 @@ Keep tracking cheap, because every logging call costs tokens too. Log one `turn`
    (`--lang` only picks the chars-per-token class: `vi` Vietnamese, `en` English-like, `code`, `mixed`.)
 
 ### Claude API / agents
+0. In Claude Code, skip estimating: `ingest --transcript ~/.claude/projects/<project>/<session>.jsonl` reads the exact `message.usage` of every call (only new lines each time) and sets the cache TTL from what was billed.
 1. After each API response: `api-usage --input <input_tokens> --output <output_tokens> [--cache-read N] [--cache-write N] [--cache-write-1h N] [--batch] [--model M]`. This sets CONTEXT exactly and adds exact dollars. If you don't have the `usage` object, fall back to `turn` and the dollars become estimates.
 2. Once you know them (optional): `calibrate --budget-usd N`, and `calibrate --rpm N --itpm N --otpm N` for the limits in the Console. Status then shows `RATE (last 60s)` and warns at 80%.
 3. On an HTTP 429, run `calibrate --hit-rate-limit` right away (it records the observed rates as the limits), then back off and retry. If you hit a spend cap, run `calibrate --hit-limit`.

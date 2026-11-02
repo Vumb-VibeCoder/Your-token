@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- New `ingest --transcript FILE`: logs exact `message.usage` from Claude Code transcripts instead of estimating (dedupes streamed lines, reads only new lines).
+- Cache TTL is no longer hardcoded to 5 min: `ingest` and `api-usage` set it from the billed write tier (`ephemeral_1h` vs `ephemeral_5m`); override with `calibrate --cache-ttl-min`. Saving tips use the live TTL.
+
 ## 1.0.0
 
 - First public release.
